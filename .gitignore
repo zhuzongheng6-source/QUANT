@@ -1,0 +1,10 @@
+data/
+projects/
+reports/
+release/
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+.env
+.env.*
+.DS_Store
