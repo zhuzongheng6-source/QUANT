@@ -2,9 +2,7 @@
 import argparse
 import hashlib
 import json
-import os
 import re
-import subprocess
 import sys
 import tempfile
 from datetime import datetime, timezone
@@ -138,7 +136,6 @@ def main():
     new.add_argument("name")
     new.add_argument("--dataset", default="base")
     cmd.add_parser("run", help="执行笔记并归档").add_argument("name")
-    cmd.add_parser("open", help="在本机浏览器打开 JupyterLab")
     args = parser.parse_args()
     if args.action == "datasets":
         for d in datasets():
@@ -148,12 +145,8 @@ def main():
         print(daily_data.save(args.file.read_bytes()))
     elif args.action == "new":
         print(create(args.name, args.dataset))
-    elif args.action == "run":
-        run(args.name)
     else:
-        os.chdir(ROOT)
-        subprocess.run([sys.executable, "-m", "jupyterlab", "--ServerApp.ip=127.0.0.1",
-                        f"--ServerApp.root_dir={ROOT}", "--LabApp.default_url=/lab/tree/工作台.ipynb"], check=True)
+        run(args.name)
 
 
 if __name__ == "__main__":
