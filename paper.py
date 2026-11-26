@@ -99,6 +99,30 @@ def simulate(capital, retry_next=False, snapshot=None, fixed=False):
     return orders, ledger
 
 
+def parse_capital(value):
+    capital = D(value)
+    if not capital.is_finite() or not D(".01") <= capital <= D("1000000000"):
+        raise ValueError("模拟本金须在 0.01 至 10 亿美元之间")
+    if capital != capital.quantize(D(".01")):
+        raise ValueError("模拟本金精确到美分")
+    return capital
+
+
+def write_reports(output, capital, retry_next=False, snapshot=None, fixed=False):
+    orders, ledger = simulate(capital, retry_next, snapshot, fixed)
+    output.mkdir(parents=True, exist_ok=True)
+    for label, fields, rows in (
+        ("orders", "date signal_asof symbol signed_shares fill_reference_close status fee cash_after", orders),
+        ("account", "date cash spy_shares bil_shares price_only_equity", ledger),
+    ):
+        path = output / f"{report_prefix(capital, retry_next, fixed)}-{label}.csv"
+        with path.open("w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(fields.split())
+            writer.writerows(rows)
+    return orders, ledger
+
+
 def main():
     parser = argparse.ArgumentParser(description="历史整股模拟成交，金额单位 USD")
     parser.add_argument("--capital", default="10000")
@@ -109,25 +133,11 @@ def main():
     if args.fixed and args.retry_next:
         parser.error("Fixed allocation currently supports monthly execution only")
     try:
-        capital = D(args.capital)
-        if not capital.is_finite() or not D(".01") <= capital <= D("1000000000"):
-            raise ValueError
-        if capital != capital.quantize(D(".01")):
-            raise ValueError
-    except (ArithmeticError, ValueError):
-        parser.error("capital must be a positive dollar amount in cents up to 1 billion")
-    orders, ledger = simulate(capital, args.retry_next, args.snapshot, args.fixed)
+        capital = parse_capital(args.capital)
+    except (ArithmeticError, ValueError) as exc:
+        parser.error(str(exc))
     output = ROOT / "reports" / (args.snapshot or "")
-    output.mkdir(exist_ok=True)
-    for label, fields, rows in (
-        ("orders", "date signal_asof symbol signed_shares fill_reference_close status fee cash_after", orders),
-        ("account", "date cash spy_shares bil_shares price_only_equity", ledger),
-    ):
-        path = output / f"{report_prefix(capital, args.retry_next, args.fixed)}-{label}.csv"
-        with path.open("w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(fields.split())
-            writer.writerows(rows)
+    orders, ledger = write_reports(output, capital, args.retry_next, args.snapshot, args.fixed)
     print(f"委托 {len(orders)}，成交 {sum(r[5]=='filled' for r in orders)}，期末现金 {ledger[-1][1]:.2f} USD")
 
 

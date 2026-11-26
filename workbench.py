@@ -2,6 +2,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import sys
 import tempfile
@@ -14,6 +15,7 @@ from jupyter_client.kernelspec import KernelSpecManager
 
 import daily_data
 from paper import data_window
+from public_release import atomic_write
 from research import ROOT, prices
 
 PROJECTS = ROOT / "projects"
@@ -72,7 +74,15 @@ def create(name, dataset):
 
 
 def load_project(path):
-    config = json.loads((path / "project.json").read_text())
+    path = Path(path)
+    manifest = path / "project.json"
+    archived = os.environ.get("QUANT_RUN_MANIFEST")
+    if archived and path.resolve() == Path.cwd().resolve():
+        manifest = Path(archived)
+    return load_market_config(json.loads(manifest.read_text()))
+
+
+def load_market_config(config):
     if config["dataset"].startswith("csv-"):
         if config["sha256"] != {"prices.csv": config["dataset"][4:]}:
             raise ValueError("项目数据指纹不符")
@@ -84,7 +94,24 @@ def load_project(path):
     return frame(config["dataset"])
 
 
-def execute_notebook(book, directory):
+RUN_CSV = re.compile(r"[\w-]{1,64}\.csv")
+
+
+def save_run_csv(table, name):
+    """Attach a DataFrame to the currently executing research run."""
+    if not isinstance(name, str) or not RUN_CSV.fullmatch(name):
+        raise ValueError("CSV 文件名须由字母、数字、中文、下划线或短横线组成")
+    manifest = os.environ.get("QUANT_RUN_MANIFEST")
+    if not manifest:
+        raise ValueError("请通过工作台运行笔记，以便归档 CSV")
+    path = Path(manifest).parent / "tables" / name
+    if path.parent.is_symlink():
+        raise ValueError("归档表格目录无效")
+    atomic_write(path, table.to_csv().encode("utf-8-sig"))
+    return name
+
+
+def execute_notebook(book, directory, manifest):
     # Scope this spec to the one execution; the user's Jupyter registry may
     # point python3 at a different environment or a removed interpreter.
     with tempfile.TemporaryDirectory() as tmp:
@@ -99,29 +126,54 @@ def execute_notebook(book, directory):
         client = NotebookClient(book, kernel_name=kernel_name, timeout=300)
         manager = client.create_kernel_manager()
         manager.kernel_spec_manager = KernelSpecManager(kernel_dirs=[tmp], ensure_native_kernel=False)
-        client.execute(cwd=str(directory))
+        client.execute(cwd=str(directory), env={**os.environ, "QUANT_RUN_MANIFEST": str(manifest)})
 
 
-def run(name):
+RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z")
+
+
+def run(name, previous=None):
     path = project_path(name)
-    load_project(path)
-    source = (path / "research.ipynb").read_bytes()
+    if previous is None:
+        source = (path / "research.ipynb").read_bytes()
+        config = (path / "project.json").read_bytes()
+    else:
+        if not isinstance(previous, str) or not RUN_ID.fullmatch(previous):
+            raise ValueError("运行编号无效")
+        archive = path / "runs" / previous
+        files = [archive / name for name in ("run.json", "source.ipynb", "project.json")]
+        if any(p.is_symlink() for p in (path, archive.parent, archive, *files)):
+            raise ValueError("归档路径无效")
+        manifest = json.loads(files[0].read_text())
+        source, config = files[1].read_bytes(), files[2].read_bytes()
+        if manifest.get("source_sha256") != hashlib.sha256(source).hexdigest():
+            raise ValueError("归档源笔记指纹不符")
+        if "config_sha256" in manifest and manifest["config_sha256"] != hashlib.sha256(config).hexdigest():
+            raise ValueError("归档数据配置指纹不符")
+    load_market_config(json.loads(config))
     book = nb.reads(source.decode(), as_version=4)
     out = path / "runs" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     out.mkdir(parents=True)
     (out / "source.ipynb").write_bytes(source)
-    (out / "project.json").write_bytes((path / "project.json").read_bytes())
+    archived_config = (out / "project.json").resolve()
+    archived_config.write_bytes(config)
     error = None
     status = "failed"
     try:
-        execute_notebook(book, path)
+        execute_notebook(book, path, archived_config)
         status = "success"
     except Exception as exc:
         error = str(exc)[-1500:]
         raise
     finally:
         nb.write(book, out / "result.ipynb")
-        (out / "run.json").write_text(json.dumps(dict(status=status, error=error, python=sys.version, executable=sys.executable, source_sha256=hashlib.sha256(source).hexdigest()), indent=2))
+        manifest = {
+            "status": status, "error": error, "python": sys.version, "executable": sys.executable,
+            "source_sha256": hashlib.sha256(source).hexdigest(),
+            "config_sha256": hashlib.sha256(config).hexdigest(),
+            "rerun_of": previous,
+        }
+        (out / "run.json").write_text(json.dumps(manifest, indent=2))
         print(out)
     return out
 
