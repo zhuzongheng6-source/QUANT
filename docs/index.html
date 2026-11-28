@@ -16,4 +16,9 @@
 <div class="row"><label>方向<select id="ibkrSide"><option value="">请选择</option><option value="buy">买入</option><option value="sell">卖出</option></select></label><label>数量（股）<input id="ibkrQty" required inputmode="numeric"></label><label>限价（USD）<input id="ibkrPrice" required inputmode="decimal"></label></div>
 <p class="hint">美元股票或 ETF · 整股 · 当日有效 · 常规交易时段</p>
 <button id="ibkrDownload" class="primary">下载 TWS 委托 CSV</button><p id="ibkrStatus" role="status"></p>
-</form></section></main><script src="app.js"></script></html>
+</form><details id="ibkrHistory" hidden><summary>委托文件记录</summary><p id="ibkrHistoryStatus" role="status"></p><div class="scroll"><table id="ibkrHistoryRows"></table></div>
+<form id="ibkrReport" hidden><h3 id="ibkrReportTitle">记录 TWS 回报</h3>
+<p class="hint">请按 TWS 界面填写。此记录由你手动核对。</p>
+<div class="row"><label>券商状态<select id="ibkrReportState" required><option value="">请选择</option><option value="submitted">已送出</option><option value="partial">部分成交</option><option value="filled">全部成交</option><option value="cancelled">已撤销</option><option value="rejected">已拒绝</option></select></label><label>累计成交股数<input id="ibkrFilled" required inputmode="numeric"></label></div>
+<button id="ibkrReportSave">保存手动回报</button><p id="ibkrReportStatus" role="status"></p>
+</form></details></section></main><script src="app.js"></script></html>

@@ -15,16 +15,17 @@ from public_release import atomic_write, bundle, package, sources
 
 import nbformat
 
-from workbench import ROOT, PROJECTS, project_path, create, datasets, frame, run, RUN_CSV, RUN_ID
+from workbench import project_path, create, datasets, frame, run, RUN_CSV, RUN_ID
 import daily_data
 import practice
-from ibkr_ticket import basket_ticket
-from ledger_data import REPORTS, catalog, ledger_report, replay_reports
+from ibkr_ticket import read_ticket, recent_tickets, record_ticket_status, save_ticket
+from ledger_data import catalog, ledger_report, replay_reports
+from workspace_paths import CODE_ROOT, PROJECTS, REPORTS, WORKSPACE_ROOT
 
-SITE = ROOT / "docs"
+SITE = CODE_ROOT / "docs"
 ASSETS = {"index.html", "app.js", "style.css", "quant-workspace.zip"}
 WRITE = Lock()
-WORKSPACE = sha256(str(ROOT).encode()).hexdigest()
+WORKSPACE = sha256(str(WORKSPACE_ROOT).encode()).hexdigest()
 
 
 def dataset_csv(key):
@@ -143,8 +144,8 @@ class Handler(BaseHTTPRequestHandler):
         if not self.trusted_host():
             return self.payload(403, {"error":"主机名不匹配"})
         if self.path == "/api/state":
-            available = [d for d in datasets() if d != "base" or (ROOT/"data/spy.json").exists()]
-            return self.payload(200, dict(platform="quant-local", datasets=available,
+            return self.payload(200, dict(platform="quant-local", datasets=datasets(),
+                                          workspace_label=WORKSPACE_ROOT.name,
                                           ledgers=[(label, str(entry[0].relative_to(REPORTS))) for label, entry in catalog()],
                                           projects=sorted(p.parent.name for p in PROJECTS.glob("*/project.json"))))
         if self.path == "/api/health":
@@ -184,13 +185,19 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("请选择历史归档")
                 out = run(obj["name"], previous)
                 book = nbformat.read(out/"result.ipynb",4)
-                result = dict(message="运行成功 · "+str(out.relative_to(ROOT))+"\n"+output_text(book))
+                result = dict(message="运行成功 · "+str(out.relative_to(WORKSPACE_ROOT))+"\n"+output_text(book))
             elif self.path == "/api/editor":
                 result = edit_cell(obj["name"])
             elif self.path == "/api/save-cell":
                 result = edit_cell(obj["name"], obj)
             elif self.path == "/api/ibkr-ticket":
-                result = basket_ticket(obj)
+                result = save_ticket(obj)
+            elif self.path == "/api/ibkr-tickets":
+                result = {"tickets": recent_tickets()}
+            elif self.path == "/api/ibkr-ticket-status":
+                result = record_ticket_status(obj)
+            elif self.path == "/api/ibkr-ticket-file":
+                result = read_ticket(obj["reference"])
             elif self.path == "/api/order-plan":
                 result = practice.account("plan", obj)
             elif self.path == "/api/practice":
@@ -281,7 +288,7 @@ def main():
             open_browser(url)
         return
     with server:
-        print(f"量化工作台已启动。{url}  按 Ctrl+C 停止。", flush=True)
+        print(f"量化工作台已启动。{url}  按 Ctrl+C 停止。\n个人资料目录：{WORKSPACE_ROOT}", flush=True)
         if args.open:
             browser = Timer(0.2, open_browser, (url,))
             browser.daemon = True

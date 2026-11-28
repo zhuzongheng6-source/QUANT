@@ -9,9 +9,7 @@ from decimal import Decimal
 
 from paper import parse_capital, report_prefix, write_reports
 from quant import reconcile
-from research import ROOT
-
-REPORTS = ROOT / "reports"
+from workspace_paths import REPORTS
 FILENAME = re.compile(r"offline-(\d+\.\d{2})(-retry)?(-fixed)?-account\.csv")
 
 

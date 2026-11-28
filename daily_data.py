@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from research import ROOT
+from workspace_paths import DATA
 
-IMPORTS = ROOT / "data/imports"
+IMPORTS = DATA / "imports"
 FIELDS = ["date", "symbol", "adjusted_close"]
 
 

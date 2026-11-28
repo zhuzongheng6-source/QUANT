@@ -24,3 +24,4 @@ nav a:focus-visible{outline:2px solid #17644b;outline-offset:-2px}
 #runTables button{overflow-wrap:anywhere}
 #runChart:not([hidden]){display:block;width:100%;height:190px}
 #runChartMetric{max-width:220px}
+.connection [role="status"]{max-width:100%;white-space:normal;overflow-wrap:anywhere}

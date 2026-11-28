@@ -4,13 +4,12 @@ import csv
 import json
 import math
 from datetime import datetime, timezone
-from pathlib import Path
 from statistics import mean
 
-ROOT = Path(__file__).resolve().parent
+from workspace_paths import CODE_ROOT as ROOT, DATA, REPORTS
 
 
-def prices(symbol="SPY", directory=ROOT / "data"):
+def prices(symbol="SPY", directory=DATA):
     item = json.loads((directory / f"{symbol.lower()}.json").read_text())["chart"]["result"][0]
     if item["meta"]["symbol"] != symbol or item["meta"]["currency"] != "USD":
         raise ValueError("Unexpected instrument")
@@ -56,11 +55,12 @@ def main():
     if not 0 <= args.cost_bps < 10000:
         parser.error("cost must be in [0, 10000)")
     rows = prices()
+    REPORTS.mkdir(parents=True, exist_ok=True)
     for start in ("2019-01-01", "2023-01-01"):
         for hold in (False, True):
             name = "hold" if hold else "trend"
             ledger = replay(rows, start, args.cost_bps, hold)
-            path = ROOT / "reports" / f"{name}-{start}-cost{args.cost_bps:g}.csv"
+            path = REPORTS / f"{name}-{start}-cost{args.cost_bps:g}.csv"
             with path.open("w", newline="") as out:
                 writer = csv.writer(out)
                 writer.writerow(("date", "adjusted_close", "closing_weight", "trade_weight", "nav", "drawdown"))

@@ -7,7 +7,7 @@ from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_FILES = (
-    "web_platform.py", "workbench.py", "backtest.py", "order_plan.py", "ibkr_ticket.py", "daily_data.py", "quant.py", "ledger_data.py", "practice.py", "paper.py", "research.py",
+    ".gitignore", "workspace_paths.py", "web_platform.py", "workbench.py", "backtest.py", "order_plan.py", "ibkr_ticket.py", "daily_data.py", "quant.py", "ledger_data.py", "practice.py", "paper.py", "research.py",
     "public_release.py", "requirements-web.txt", "WEB-README.md",
     "docs/index.html", "docs/style.css", "docs/app.js",
 )
@@ -48,7 +48,6 @@ def github_bundle():
         "docs/quant-workspace.zip": download,
         "docs/.nojekyll": b"",
         "README.md": files["WEB-README.md"],
-        ".gitignore": b"data/\nprojects/\nreports/\nrelease/\n.venv/\n__pycache__/\n.ipynb_checkpoints/\n.env\n.env.*\n.DS_Store\n",
     })
     path = ROOT/"release/quant-pages.zip"
     result = bundle(files)

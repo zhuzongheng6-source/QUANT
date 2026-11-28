@@ -5,12 +5,13 @@ import csv
 from io import StringIO
 from hashlib import sha256
 import json
-from pathlib import Path
 import re
 import sqlite3
 from uuid import UUID, uuid4
 
-DB = Path(__file__).resolve().parent / "data/practice.sqlite3"
+from workspace_paths import DATA
+
+DB = DATA / "practice.sqlite3"
 
 
 def cents(value, *, allow_zero=False):
