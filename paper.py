@@ -7,7 +7,8 @@ import re
 import math
 from decimal import Decimal as D
 
-from research import ROOT, prices, replay
+from research import prices, replay
+from workspace_paths import DATA, REPORTS
 
 SYMBOLS = ("SPY", "BIL")
 FEE = D("0.0005")
@@ -15,10 +16,10 @@ FEE = D("0.0005")
 
 def data_window(snapshot):
     if snapshot is None:
-        return ROOT / "data", "2023-01-01"
+        return DATA, "2023-01-01"
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}-[a-f0-9]{12}", snapshot):
         raise ValueError("Invalid snapshot identifier")
-    directory = ROOT / "data/snapshots" / snapshot
+    directory = DATA / "snapshots" / snapshot
     manifest = (directory / "summary.json").read_bytes()
     if hashlib.sha256(manifest).hexdigest()[:12] != snapshot[-12:]:
         raise ValueError("Snapshot manifest checksum mismatch")
@@ -29,7 +30,7 @@ def data_window(snapshot):
     return directory, "2026-01-01"
 
 
-def market(directory=ROOT / "data"):
+def market(directory=DATA):
     quotes = {}
     for symbol in SYMBOLS:
         adjusted = prices(symbol, directory)
@@ -136,7 +137,7 @@ def main():
         capital = parse_capital(args.capital)
     except (ArithmeticError, ValueError) as exc:
         parser.error(str(exc))
-    output = ROOT / "reports" / (args.snapshot or "")
+    output = REPORTS / (args.snapshot or "")
     orders, ledger = write_reports(output, capital, args.retry_next, args.snapshot, args.fixed)
     print(f"委托 {len(orders)}，成交 {sum(r[5]=='filled' for r in orders)}，期末现金 {ledger[-1][1]:.2f} USD")
 

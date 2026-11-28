@@ -1,0 +1,40 @@
+name: QUANT quality
+
+on:
+  pull_request:
+  push:
+
+permissions:
+  contents: read
+
+jobs:
+  quant-quality:
+    name: quant-quality
+    if: github.event_name == 'pull_request' || github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        id: python
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install dependencies and record resolved versions
+        env:
+          QUANT_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          "$QUANT_PYTHON" -m pip install -r requirements-dev.txt
+          "$QUANT_PYTHON" -m pip freeze
+          node --version
+      - name: Run local quality checks
+        env:
+          QUANT_PYTHON: ${{ steps.python.outputs.python-path }}
+        run: '"$QUANT_PYTHON" tools/check.py'

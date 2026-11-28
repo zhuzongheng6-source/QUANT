@@ -16,13 +16,13 @@ from jupyter_client.kernelspec import KernelSpecManager
 import daily_data
 from paper import data_window
 from public_release import atomic_write
-from research import ROOT, prices
-
-PROJECTS = ROOT / "projects"
+from research import prices
+from workspace_paths import CODE_ROOT, DATA, PROJECTS, WORKSPACE_ENV, WORKSPACE_ROOT
 
 
 def datasets():
-    return ["base", *sorted(p.parent.name for p in (ROOT / "data/snapshots").glob("*/summary.json")),
+    base = ["base"] if all((DATA / name).is_file() for name in ("spy.json", "bil.json", "sp500.csv")) else []
+    return [*base, *sorted(p.parent.name for p in (DATA / "snapshots").glob("*/summary.json")),
             *sorted(p.stem for p in daily_data.IMPORTS.glob("csv-*.csv"))]
 
 
@@ -56,7 +56,7 @@ def create(name, dataset):
         stamps = {n: hashlib.sha256((directory / n).read_bytes()).hexdigest()
                   for n in ("spy.json", "bil.json", "sp500.csv")}
     path = project_path(name)
-    PROJECTS.mkdir(exist_ok=True)
+    PROJECTS.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=PROJECTS) as tmp:
         stage = Path(tmp) / "project"
         stage.mkdir()
@@ -64,7 +64,7 @@ def create(name, dataset):
         book = nb.v4.new_notebook(metadata={"kernelspec":{"display_name":"Python 3","name":"python3","language":"python"}})
         book.cells = [
             nb.v4.new_markdown_cell(f"# {name}\n\n数据检查 · 美元复权日收盘价。可在下面添加自己的分析。"),
-            nb.v4.new_code_cell("import sys\nfrom pathlib import Path\nroot = next(p for p in (Path.cwd(), *Path.cwd().parents) if (p / 'workbench.py').is_file())\nsys.path.insert(0, str(root))\nfrom workbench import load_project\nprices = load_project(Path.cwd())\nprices.tail()"),
+            nb.v4.new_code_cell("from pathlib import Path\nfrom workbench import load_project\nprices = load_project(Path.cwd())\nprices.tail()"),
             nb.v4.new_code_cell("prices.describe().T.assign(missing=prices.isna().sum())")]
         nb.write(book, stage / "research.ipynb")
         if path.exists():
@@ -111,6 +111,21 @@ def save_run_csv(table, name):
     return name
 
 
+LEGACY_BOOTSTRAP = (
+    "root = next(p for p in (Path.cwd(), *Path.cwd().parents) if (p / 'workbench.py').is_file())\n"
+    "sys.path.insert(0, str(root))\n"
+    "from workbench import load_project\n"
+)
+
+
+def update_legacy_bootstrap(book):
+    # Adapt only the platform-generated import block. Archived source stays intact.
+    prefix = "import sys\nfrom pathlib import Path\n" + LEGACY_BOOTSTRAP
+    for cell in book.cells:
+        if cell.cell_type == "code" and cell.source.startswith(prefix):
+            cell.source = "import sys\nfrom pathlib import Path\nfrom workbench import load_project\n" + cell.source[len(prefix):]
+
+
 def execute_notebook(book, directory, manifest):
     # Scope this spec to the one execution; the user's Jupyter registry may
     # point python3 at a different environment or a removed interpreter.
@@ -126,7 +141,12 @@ def execute_notebook(book, directory, manifest):
         client = NotebookClient(book, kernel_name=kernel_name, timeout=300)
         manager = client.create_kernel_manager()
         manager.kernel_spec_manager = KernelSpecManager(kernel_dirs=[tmp], ensure_native_kernel=False)
-        client.execute(cwd=str(directory), env={**os.environ, "QUANT_RUN_MANIFEST": str(manifest)})
+        pythonpath = [str(CODE_ROOT)]
+        if os.environ.get("PYTHONPATH"):
+            pythonpath.append(os.environ["PYTHONPATH"])
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(pythonpath),
+               WORKSPACE_ENV: str(WORKSPACE_ROOT), "QUANT_RUN_MANIFEST": str(manifest)}
+        client.execute(cwd=str(directory), env=env)
 
 
 RUN_ID = re.compile(r"[0-9]{8}T[0-9]{12}Z")
@@ -152,6 +172,7 @@ def run(name, previous=None):
             raise ValueError("归档数据配置指纹不符")
     load_market_config(json.loads(config))
     book = nb.reads(source.decode(), as_version=4)
+    update_legacy_bootstrap(book)
     out = path / "runs" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
     out.mkdir(parents=True)
     (out / "source.ipynb").write_bytes(source)

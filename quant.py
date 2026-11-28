@@ -7,7 +7,8 @@ from decimal import Decimal
 import sys
 
 from paper import FEE, SYMBOLS, data_window, market, report_prefix
-from research import ROOT
+from workspace_paths import CODE_ROOT, REPORTS, WORKSPACE_ENV, WORKSPACE_ROOT
+import os
 
 
 def reconcile(capital, directory, retry_next=False, snapshot=None, fixed=False):
@@ -55,7 +56,8 @@ def reconcile(capital, directory, retry_next=False, snapshot=None, fixed=False):
 
 
 def run(script, *args):
-    subprocess.run([sys.executable, str(ROOT / script), *args], check=True)
+    subprocess.run([sys.executable, str(CODE_ROOT / script), *args], check=True,
+                   env={**os.environ, WORKSPACE_ENV: str(WORKSPACE_ROOT)})
 
 
 def main():
@@ -84,7 +86,7 @@ def main():
         if args.snapshot is not None:
             options.extend(["--snapshot", args.snapshot])
         run("paper.py", "--capital", args.capital, *options)
-        reconcile(Decimal(args.capital), ROOT / "reports" / (args.snapshot or ""), args.retry_next, args.snapshot, args.fixed)
+        reconcile(Decimal(args.capital), REPORTS / (args.snapshot or ""), args.retry_next, args.snapshot, args.fixed)
     else:
         run("refresh.py", args.end)
 

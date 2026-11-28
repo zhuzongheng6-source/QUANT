@@ -101,7 +101,8 @@ async function state(){
   el("tools").hidden=false;
   el("ibkrOffline").hidden=true;
   el("ibkrForm").hidden=false;
-  el("mode").textContent="本机工作区";
+  el("ibkrHistory").hidden=false;
+  el("mode").textContent=state.workspace_label?"本机工作区 · "+state.workspace_label:"本机工作区";
   el("localInfo").textContent="创建项目后，可直接执行已保存的 Python 笔记。";
   el("savedData").hidden=!state.datasets.length;
   const replayDatasets=state.datasets.filter(key=>!key.startsWith("csv-"));
@@ -664,14 +665,86 @@ el("ibkrForm").onsubmit=async event=>{
       quantity:el("ibkrQty").value.trim(),
       price:el("ibkrPrice").value.trim()
     });
-    const url=URL.createObjectURL(new Blob([ticket.csv],{type:"text/csv;charset=utf-8"}));
-    const link=document.createElement("a");
-    link.href=url;link.download=ticket.filename;link.click();
-    setTimeout(()=>URL.revokeObjectURL(url),1000);
-    status.textContent="已生成文件。请到 TWS 导入、核对并确认发送。";
+    downloadTicket(ticket);
+    status.textContent="文件已保存 · "+ticket.reference+"。请到 TWS 核对后发送。";
+    if(el("ibkrHistory").open)void loadTicketHistory();
   }catch(e){status.textContent="生成失败 · "+e.message}
   finally{button.disabled=!local}
 };
+
+function downloadTicket(ticket){
+  const url=URL.createObjectURL(new Blob([ticket.csv],{type:"text/csv;charset=utf-8"}));
+  const link=document.createElement("a");
+  link.href=url;link.download=ticket.filename;link.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+async function loadTicketHistory(){
+  const table=el("ibkrHistoryRows"), status=el("ibkrHistoryStatus");
+  status.textContent="正在读取…";
+  table.replaceChildren();
+  try{
+    const {tickets}=await api("ibkr-tickets",{});
+    if(!tickets.length){status.textContent="尚未生成委托文件。";return}
+    status.textContent="最近 "+tickets.length+" 份文件。实际委托状态请在 TWS 查询。";
+    const head=table.insertRow();
+    for(const title of ["时间 UTC","参考号","品种","方向","股数","限价 USD","手动回报","操作"]){
+      const cell=document.createElement("th");cell.textContent=title;head.append(cell);
+    }
+    for(const ticket of tickets){
+      const row=table.insertRow();
+      for(const value of [ticket.utc,ticket.reference,ticket.symbol,ticket.side==="buy"?"买入":"卖出",ticket.quantity,ticket.price]){
+        row.insertCell().textContent=value;
+      }
+      row.insertCell().textContent=ticket.latest
+        ?ticket.latest.label+" · "+ticket.latest.filled+"/"+ticket.quantity+" 股"
+        :"待核对";
+      const button=document.createElement("button");
+      button.textContent="重新下载";
+      button.onclick=async()=>{
+        button.disabled=true;
+        try{downloadTicket(await api("ibkr-ticket-file",{reference:ticket.reference}))}
+        catch(e){status.textContent="下载失败 · "+e.message}
+        finally{button.disabled=false}
+      };
+      const operations=row.insertCell();
+      operations.append(button);
+      if(!["filled","cancelled","rejected"].includes(ticket.latest?.status)){
+        const report=document.createElement("button");
+        report.textContent="记录回报";
+        report.onclick=()=>openTicketReport(ticket);
+        operations.append(report);
+      }
+    }
+  }catch(e){status.textContent="读取失败 · "+e.message}
+}
+
+let reportReference=null;
+function openTicketReport(ticket){
+  reportReference=ticket.reference;
+  el("ibkrReport").hidden=false;
+  el("ibkrReportTitle").textContent="记录 TWS 回报 · "+ticket.reference;
+  el("ibkrReportState").value=ticket.latest?.status||"";
+  el("ibkrFilled").value=ticket.latest?.filled??"0";
+  el("ibkrReportStatus").textContent="";
+  el("ibkrReportState").focus();
+}
+
+el("ibkrReport").onsubmit=async event=>{
+  event.preventDefault();
+  const reference=reportReference;
+  if(!reference || !local)return;
+  const save=el("ibkrReportSave");
+  save.disabled=true;
+  try{
+    await api("ibkr-ticket-status",{reference,status:el("ibkrReportState").value,filled:el("ibkrFilled").value.trim()});
+    if(reference===reportReference)el("ibkrReport").hidden=true;
+    await loadTicketHistory();
+  }catch(e){if(reference===reportReference)el("ibkrReportStatus").textContent="保存失败 · "+e.message}
+  finally{save.disabled=false}
+};
+
+el("ibkrHistory").ontoggle=()=>{if(el("ibkrHistory").open)loadTicketHistory()};
 
 function navigate(){
   const slug=location.hash.slice(1);

@@ -1,10 +1,13 @@
-data/
-projects/
-reports/
-release/
+/data/
+/projects/
+/reports/
+/workspace/
+/release/
 .venv/
+.ruff_cache/
 __pycache__/
 .ipynb_checkpoints/
+.memsearch/
 .env
 .env.*
 .DS_Store
